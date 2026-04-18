@@ -27,8 +27,11 @@ app.use(express.json({ limit: "1mb" }));
 app.get("/", (req, res) => {
   res.status(200).send("Bot is running");
 });
-console.log("🔥 ПОЛУЧЕН ЗАПРОС:", req.body);
 app.post("/order", async (req, res) => {
+
+  console.log("🔥 ПОЛУЧЕН ЗАПРОС:", req.body); // ← ВОТ СЮДА
+
+  const { order, user } = req.body;
   try {
     const { order, user } = req.body || {};
 
