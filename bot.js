@@ -1,43 +1,54 @@
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const cors = require("cors");
+const fs = require("fs");
 
-// ===== CONFIG =====
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL;
 const WEBAPP_URL = process.env.WEBAPP_URL;
 const WORK_CHAT_ID = Number(process.env.WORK_CHAT_ID);
+const MANAGER_CHAT_URL = process.env.MANAGER_CHAT_URL || "https://t.me/your_manager_username";
+
+if (!BOT_TOKEN) throw new Error("BOT_TOKEN is missing");
+if (!PUBLIC_URL) throw new Error("PUBLIC_URL is missing");
+if (!WEBAPP_URL) throw new Error("WEBAPP_URL is missing");
+if (!Number.isFinite(WORK_CHAT_ID)) throw new Error("WORK_CHAT_ID is missing or invalid");
 
 const bot = new TelegramBot(BOT_TOKEN);
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 const PORT = process.env.PORT || 3000;
 const WEBHOOK_PATH = `/telegram/${BOT_TOKEN}`;
 const WEBHOOK_URL = `${PUBLIC_URL}${WEBHOOK_PATH}`;
 
-// 🔢 глобальный счётчик
 let orderCounter = 1;
+try {
+  const data = fs.readFileSync("counter.json", "utf8");
+  orderCounter = JSON.parse(data).counter || 1;
+} catch (e) {
+  orderCounter = 1;
+}
 
-// ===== SERVER =====
+function saveCounter() {
+  fs.writeFileSync("counter.json", JSON.stringify({ counter: orderCounter }));
+}
+
 app.get("/", (req, res) => {
-  res.send("Bot is running");
+  res.status(200).send("Bot is running");
 });
 
-// ===== ФОРМАТИРОВАНИЕ =====
-function cleanText(text, remove) {
+function clean(text, remove) {
   if (!text) return "-";
   return text.replace(remove, "").trim();
 }
 
-// ===== ЗАЯВКА =====
 app.post("/order", async (req, res) => {
   const { order, user } = req.body;
   if (!order) return res.sendStatus(400);
 
-  // 👤 пользователь (фикс)
   const userLabel = user?.username
     ? `@${user.username}`
     : `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || `ID:${user?.id}`;
@@ -46,35 +57,33 @@ app.post("/order", async (req, res) => {
     ? `https://t.me/${user.username}`
     : `tg://user?id=${user?.id}`;
 
-  // 🔢 номер заявки
   const orderId = orderCounter++;
+  saveCounter();
 
-  // 💸 чистка текста
-  const receiveAmount = cleanText(order.resultText, "К получению:");
-  const giveAmount = cleanText(order.subResultText, "Вы отдаёте:");
-  const fee = cleanText(order.feeText, "Комиссия:");
+  const receive = clean(order.resultText, "К получению:");
+  const fee = clean(order.feeText, "Комиссия:");
 
-  const text = `
-📨 Заявка №${orderId}
-
-👤 Клиент: ${userLabel}
-🔗 ${userLink}
-
-💱 ${order.from} → ${order.to}
-
-💸 Отдаёт: ${order.amount} ${order.from}
-💰 Получает: ${receiveAmount}
-
-💼 Комиссия: ${fee}
-
-📦 Отправка:
-${order.sendRubMethod || "-"} ${order.sendCity || ""}
-
-📥 Получение:
-${order.receiveMethod || "-"} ${order.receiveCity || ""}
-${order.receiveDetails || ""}
-${order.network || ""}
-`;
+  const text = [
+    `📨 Заявка №${orderId}`,
+    "",
+    `👤 Клиент: ${userLabel}`,
+    `🔗 ${userLink}`,
+    "",
+    `💱 ${order.from} → ${order.to}`,
+    "",
+    `💸 Отдаёт: ${order.amount} ${order.from}`,
+    `💰 Получает: ${receive}`,
+    "",
+    `💼 Комиссия: ${fee}`,
+    "",
+    `📦 Отправка:`,
+    `${order.sendRubMethod || "-"} ${order.sendCity || ""}`.trim(),
+    "",
+    `📥 Получение:`,
+    `${order.receiveMethod || "-"} ${order.receiveCity || ""}`.trim(),
+    order.receiveDetails || "",
+    order.network || ""
+  ].filter(Boolean).join("\n");
 
   try {
     await bot.sendMessage(WORK_CHAT_ID, text, {
@@ -90,26 +99,23 @@ ${order.network || ""}
 
     res.sendStatus(200);
   } catch (err) {
-    console.log(err);
+    console.log("ORDER SEND ERROR:", err.response?.body || err);
     res.sendStatus(500);
   }
 });
 
-// ===== КНОПКИ =====
-bot.on("callback_query", async (query) => {
-  const [action, id] = query.data.split(":");
+bot.on("callback_query", async (q) => {
+  const [action, id] = String(q.data || "").split(":");
 
   if (action === "take") {
     await bot.editMessageText(
-      query.message.text + "\n\n🟢 Статус: В работе",
+      q.message.text + "\n\n🟢 Статус: В работе",
       {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
+        chat_id: q.message.chat.id,
+        message_id: q.message.message_id,
         reply_markup: {
           inline_keyboard: [
-            [
-              { text: "✅ Завершена", callback_data: `done:${id}` }
-            ]
+            [{ text: "✅ Завершена", callback_data: `done:${id}` }]
           ]
         }
       }
@@ -118,55 +124,44 @@ bot.on("callback_query", async (query) => {
 
   if (action === "done") {
     await bot.editMessageText(
-      query.message.text + "\n\n✅ Статус: Завершена",
+      q.message.text + "\n\n✅ Статус: Завершена",
       {
-        chat_id: query.message.chat.id,
-        message_id: query.message.message_id,
+        chat_id: q.message.chat.id,
+        message_id: q.message.message_id,
         reply_markup: { inline_keyboard: [] }
       }
     );
   }
 
   if (action === "close") {
-    await bot.deleteMessage(
-      query.message.chat.id,
-      query.message.message_id
-    );
+    await bot.deleteMessage(q.message.chat.id, q.message.message_id);
   }
 
-  await bot.answerCallbackQuery(query.id);
+  await bot.answerCallbackQuery(q.id);
 });
 
-// ===== TELEGRAM =====
 app.post(WEBHOOK_PATH, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// ===== START =====
-bot.onText(/\/start/, (msg) => {
+bot.onText(/\/start$/, (msg) => {
   bot.sendMessage(msg.chat.id, "Открыть форму:", {
     reply_markup: {
       inline_keyboard: [
-        [
-          {
-            text: "🚀 Открыть форму",
-            web_app: { url: WEBAPP_URL }
-          }
-        ]
+        [{ text: "🚀 Открыть форму", web_app: { url: WEBAPP_URL } }]
       ]
     }
   });
 });
 
-// ===== START SERVER =====
 app.listen(PORT, async () => {
-  console.log("Server running", PORT);
+  console.log("Server running on port", PORT);
 
   try {
     await bot.setWebHook(WEBHOOK_URL);
-    console.log("Webhook установлен");
+    console.log("Webhook set:", WEBHOOK_URL);
   } catch (e) {
-    console.log(e);
+    console.log("WEBHOOK ERROR:", e.response?.body || e);
   }
 });
