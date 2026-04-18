@@ -49,13 +49,23 @@ app.post("/order", async (req, res) => {
   const { order, user } = req.body;
   if (!order) return res.sendStatus(400);
 
-  const userLabel = user?.username
-    ? `@${user.username}`
-    : `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || `ID:${user?.id}`;
+ let userLabel = `ID:${user?.id}`;
+let userLink = `tg://user?id=${user?.id}`;
 
-  const userLink = user?.username
-    ? `https://t.me/${user.username}`
-    : `tg://user?id=${user?.id}`;
+try {
+  if (user?.id) {
+    const chat = await bot.getChat(user.id);
+
+    if (chat.username) {
+      userLabel = `@${chat.username}`;
+      userLink = `https://t.me/${chat.username}`;
+    } else {
+      userLabel = `${chat.first_name || ""} ${chat.last_name || ""}`.trim() || userLabel;
+    }
+  }
+} catch (e) {
+  console.log("Не удалось получить username:", e.message);
+}
 
   const orderId = orderCounter++;
   saveCounter();
