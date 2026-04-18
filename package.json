@@ -1,9 +1,13 @@
 {
-  "name": "trud-bot",
+  "name": "trud-exchange-bot",
   "version": "1.0.0",
+  "description": "Telegram Mini App + Bot for Trud Exchange",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "cors": "^2.8.5",
