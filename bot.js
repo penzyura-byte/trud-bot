@@ -1,7 +1,7 @@
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 
-const BOT_TOKEN = process.env.BOT_TOKEN || "8665717135:AAECa7vDDi8M8bYbxrzqVoN0lJQ1Ukay_x0";
+const BOT_TOKEN = process.env.BOT_TOKEN || "8665717135:AAEsU5zGUBRx1X61v5dp0T4G3JT1oT4uk_g";
 const WEBAPP_URL = process.env.WEBAPP_URL || "https://timely-yeot-97c989.netlify.app";
 const WORK_CHAT_ID = Number(process.env.WORK_CHAT_ID || "-1003911423320");
 
