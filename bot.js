@@ -7,7 +7,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL;
 const WEBAPP_URL = process.env.WEBAPP_URL;
 const WORK_CHAT_ID = Number(process.env.WORK_CHAT_ID);
-const MANAGER_CHAT_URL = process.env.MANAGER_CHAT_URL || "https://t.me/your_manager_username";
+const MANAGER_CHAT_URL = process.env.MANAGER_CHAT_URL || "https://t.me/UAGA_B";
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN is missing");
 if (!PUBLIC_URL) throw new Error("PUBLIC_URL is missing");
@@ -55,24 +55,32 @@ app.get("/", (req, res) => {
 });
 
 app.post("/order", async (req, res) => {
-  const { order, initData } = req.body || {};
-  const tgUser = parseInitData(initData);
+  try {
+    const { order, initData } = req.body || {};
+    const tgUser = parseInitData(initData);
 
-  if (!order || !tgUser?.id) {
-    return res.sendStatus(400);
-  }
+    console.log("ORDER BODY:", req.body);
+    console.log("PARSED USER:", tgUser);
 
-  const orderId = orderCounter++;
-  saveCounter();
+    if (!order) {
+      return res.status(400).json({ ok: false, error: "order missing" });
+    }
 
-  const userLabel = tgUser.username
-    ? `@${tgUser.username}`
-    : `${tgUser.first_name || ""} ${tgUser.last_name || ""}`.trim() || `ID:${tgUser.id}`;
+    if (!tgUser?.id) {
+      return res.status(400).json({ ok: false, error: "telegram user missing" });
+    }
 
-  const receive = clean(order.resultText, "К получению:");
-  const fee = clean(order.feeText, "Комиссия:");
+    const orderId = orderCounter++;
+    saveCounter();
 
-  const text = `
+    const userLabel = tgUser.username
+      ? `@${tgUser.username}`
+      : `${tgUser.first_name || ""} ${tgUser.last_name || ""}`.trim() || `ID:${tgUser.id}`;
+
+    const receive = clean(order.resultText, "К получению:");
+    const fee = clean(order.feeText, "Комиссия:");
+
+    const text = `
 📨 Заявка №${orderId}
 
 👤 Клиент: ${userLabel}
@@ -93,19 +101,26 @@ ${order.receiveDetails || ""}
 ${order.network || ""}
 `;
 
-  await bot.sendMessage(WORK_CHAT_ID, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💬 Открыть чат", callback_data: `contact:${tgUser.id}` }],
-        [
-          { text: "🟢 В работу", callback_data: `take:${orderId}` },
-          { text: "❌ Закрыта", callback_data: `close:${orderId}` }
+    await bot.sendMessage(WORK_CHAT_ID, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "💬 Открыть чат", callback_data: `contact:${tgUser.id}` }],
+          [
+            { text: "🟢 В работу", callback_data: `take:${orderId}` },
+            { text: "❌ Закрыта", callback_data: `close:${orderId}` }
+          ]
         ]
-      ]
-    }
-  });
+      }
+    });
 
-  res.sendStatus(200);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.log("ORDER SEND ERROR:", err.response?.body || err);
+    return res.status(500).json({
+      ok: false,
+      error: err.response?.body?.description || err.message || "unknown error"
+    });
+  }
 });
 
 bot.on("callback_query", async (q) => {
