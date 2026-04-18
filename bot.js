@@ -67,16 +67,13 @@ app.post("/order", async (req, res) => {
       return res.status(400).json({ ok: false, error: "order missing" });
     }
 
-    if (!tgUser?.id) {
-      return res.status(400).json({ ok: false, error: "telegram user missing" });
-    }
-
     const orderId = orderCounter++;
     saveCounter();
 
-    const userLabel = tgUser.username
+    const userId = tgUser?.id || null;
+    const userLabel = tgUser?.username
       ? `@${tgUser.username}`
-      : `${tgUser.first_name || ""} ${tgUser.last_name || ""}`.trim() || `ID:${tgUser.id}`;
+      : `${tgUser?.first_name || ""} ${tgUser?.last_name || ""}`.trim() || (userId ? `ID:${userId}` : "Клиент");
 
     const receive = clean(order.resultText, "К получению:");
     const fee = clean(order.feeText, "Комиссия:");
@@ -102,15 +99,17 @@ ${order.receiveDetails || ""}
 ${order.network || ""}
 `;
 
+    const keyboard = [
+      ...(userId ? [[{ text: "💬 Открыть чат", callback_data: `contact:${userId}` }]] : []),
+      [
+        { text: "🟢 В работу", callback_data: `take:${orderId}` },
+        { text: "❌ Закрыта", callback_data: `close:${orderId}` }
+      ]
+    ];
+
     await bot.sendMessage(WORK_CHAT_ID, text, {
       reply_markup: {
-        inline_keyboard: [
-          [{ text: "💬 Открыть чат", callback_data: `contact:${tgUser.id}` }],
-          [
-            { text: "🟢 В работу", callback_data: `take:${orderId}` },
-            { text: "❌ Закрыта", callback_data: `close:${orderId}` }
-          ]
-        ]
+        inline_keyboard: keyboard
       }
     });
 
