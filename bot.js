@@ -60,7 +60,6 @@ app.get("/", (req, res) => {
 app.post("/order", async (req, res) => {
   try {
     const { order, initData, user } = req.body || {};
-
     const tgUser = parseInitData(initData) || user || null;
 
     if (!order) {
