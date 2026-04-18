@@ -35,11 +35,15 @@ function saveCounter() {
 }
 
 function parseInitData(initData) {
-  const params = new URLSearchParams(initData);
-  const userRaw = params.get("user");
-  if (!userRaw) return null;
   try {
-    return JSON.parse(userRaw);
+    const params = new URLSearchParams(initData);
+    const userRaw = params.get("user");
+    if (!userRaw) return null;
+    try {
+      return JSON.parse(userRaw);
+    } catch {
+      return JSON.parse(decodeURIComponent(userRaw));
+    }
   } catch {
     return null;
   }
@@ -56,11 +60,11 @@ app.get("/", (req, res) => {
 
 app.post("/order", async (req, res) => {
   try {
-    const { order, initData } = req.body || {};
-    const tgUser = parseInitData(initData);
+    const { order, initData, user } = req.body || {};
 
     console.log("ORDER BODY:", req.body);
-    console.log("PARSED USER:", tgUser);
+
+    const tgUser = parseInitData(initData) || user || null;
 
     if (!order) {
       return res.status(400).json({ ok: false, error: "order missing" });
