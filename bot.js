@@ -7,7 +7,6 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL;
 const WEBAPP_URL = process.env.WEBAPP_URL;
 const WORK_CHAT_ID = Number(process.env.WORK_CHAT_ID);
-const MANAGER_CHAT_URL = process.env.MANAGER_CHAT_URL || "https://t.me/UAGA_B";
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN is missing");
 if (!PUBLIC_URL) throw new Error("PUBLIC_URL is missing");
@@ -61,8 +60,6 @@ app.get("/", (req, res) => {
 app.post("/order", async (req, res) => {
   try {
     const { order, initData, user } = req.body || {};
-
-    console.log("ORDER BODY:", req.body);
 
     const tgUser = parseInitData(initData) || user || null;
 
