@@ -1,13 +1,28 @@
 const TelegramBot = require("node-telegram-bot-api");
+const express = require("express");
 
 const BOT_TOKEN = process.env.BOT_TOKEN || "8665717135:AAECa7vDDi8M8bYbxrzqVoN0lJQ1Ukay_x0";
 const WEBAPP_URL = process.env.WEBAPP_URL || "https://timely-yeot-97c989.netlify.app";
 const WORK_CHAT_ID = Number(process.env.WORK_CHAT_ID || "-1003911423320");
 
+// ====== INIT ======
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const app = express();
 
 const orderOwners = new Map();
 
+// ====== SERVER (для Render) ======
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("Bot is running");
+});
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
+
+// ====== UI BUTTON ======
 function sendOpenFormButton(chatId) {
   return bot.sendMessage(chatId, "Оставьте заявку на обмен:", {
     reply_markup: {
@@ -23,12 +38,11 @@ function sendOpenFormButton(chatId) {
   });
 }
 
-// 🔥 /start обычный
+// ====== START ======
 bot.onText(/\/start$/, async (msg) => {
   await sendOpenFormButton(msg.chat.id);
 });
 
-// 🔥 deep link (1 клик сценарий)
 bot.onText(/\/start (.+)/, async (msg, match) => {
   const param = match[1];
 
@@ -40,7 +54,7 @@ bot.onText(/\/start (.+)/, async (msg, match) => {
   await sendOpenFormButton(msg.chat.id);
 });
 
-// 🔥 ПРИЁМ ЗАЯВКИ ИЗ MINI APP
+// ====== RECEIVE MINI APP DATA ======
 bot.on("message", async (msg) => {
   if (!msg.web_app_data || !msg.web_app_data.data) return;
 
@@ -92,23 +106,21 @@ ${order.network ? "Сеть: " + order.network : ""}
     console.log("Ошибка отправки:", err.response?.body || err);
   }
 
-  // ответ клиенту
   await bot.sendMessage(msg.chat.id, "✅ Заявка отправлена менеджеру");
 });
 
-// 🔥 КНОПКИ МЕНЕДЖЕРА
+// ====== MANAGER BUTTONS ======
 bot.on("callback_query", async (query) => {
   const [action, orderId] = query.data.split(":");
   const ownerChatId = orderOwners.get(orderId);
 
-  let textUpdate = "";
-
-  if (action === "take") textUpdate = "🟢 Взята в работу";
-  if (action === "close") textUpdate = "🔴 Закрыта";
+  let status = "";
+  if (action === "take") status = "🟢 Взята в работу";
+  if (action === "close") status = "🔴 Закрыта";
 
   try {
     await bot.editMessageText(
-      query.message.text + "\n\n" + textUpdate,
+      query.message.text + "\n\n" + status,
       {
         chat_id: query.message.chat.id,
         message_id: query.message.message_id,
