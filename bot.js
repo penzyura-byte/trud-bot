@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
 
-// ===== CONFIG =====
+// CONFIG
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL;
 const WEBAPP_URL = process.env.WEBAPP_URL;
@@ -19,24 +19,21 @@ const PORT = process.env.PORT || 3000;
 const WEBHOOK_PATH = `/telegram/${BOT_TOKEN}`;
 const WEBHOOK_URL = `${PUBLIC_URL}${WEBHOOK_PATH}`;
 
-// ===== СЧЁТЧИК =====
+// Счётчик заявок
 let orderCounter = 1;
-
 try {
   const data = fs.readFileSync("counter.json");
   orderCounter = JSON.parse(data).counter || 1;
-} catch (e) {}
+} catch {}
 
 function saveCounter() {
   fs.writeFileSync("counter.json", JSON.stringify({ counter: orderCounter }));
 }
 
-// ===== SERVER =====
-app.get("/", (req, res) => {
-  res.send("Bot is running");
-});
+// Сервер
+app.get("/", (req, res) => res.send("Bot is running"));
 
-// ===== ЗАЯВКА =====
+// Заявка
 app.post("/order", async (req, res) => {
   const { order, user } = req.body;
   if (!order) return res.sendStatus(400);
@@ -52,9 +49,6 @@ app.post("/order", async (req, res) => {
 
   const clean = (t, r) => (t ? t.replace(r, "").trim() : "-");
 
-  const receive = clean(order.resultText, "К получению:");
-  const fee = clean(order.feeText, "Комиссия:");
-
   const text = `
 📨 Заявка №${orderId}
 
@@ -63,122 +57,73 @@ app.post("/order", async (req, res) => {
 💱 ${order.from} → ${order.to}
 
 💸 Отдаёт: ${order.amount} ${order.from}
-💰 Получает: ${receive}
+💰 Получает: ${clean(order.resultText, "К получению:")}
 
-💼 Комиссия: ${fee}
-
-📦 Отправка:
-${order.sendRubMethod || "-"} ${order.sendCity || ""}
-
-📥 Получение:
-${order.receiveMethod || "-"} ${order.receiveCity || ""}
-${order.receiveDetails || ""}
-${order.network || ""}
+💼 Комиссия: ${clean(order.feeText, "Комиссия:")}
 `;
 
-  try {
-    await bot.sendMessage(WORK_CHAT_ID, text, {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "💬 Написать клиенту",
-              url: `tg://user?id=${userId}`
-            }
-          ],
-          [
-            {
-              text: "✉️ Ответить (шаблон)",
-              callback_data: `reply:${userId}:${orderId}`
-            }
-          ],
-          [
-            { text: "🟢 В работу", callback_data: `take:${orderId}` },
-            { text: "❌ Закрыта", callback_data: `close:${orderId}` }
-          ]
+  await bot.sendMessage(WORK_CHAT_ID, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "💬 Написать клиенту", callback_data: `contact:${userId}` }],
+        [
+          { text: "🟢 В работу", callback_data: `take` },
+          { text: "❌ Закрыта", callback_data: `close` }
         ]
-      }
-    });
+      ]
+    }
+  });
 
-    res.sendStatus(200);
-  } catch (err) {
-    console.log(err);
-    res.sendStatus(500);
-  }
+  res.sendStatus(200);
 });
 
-// ===== КНОПКИ =====
+// Кнопки
 bot.on("callback_query", async (q) => {
   const data = q.data;
 
-  if (data.startsWith("reply")) {
-    const [, userId, orderId] = data.split(":");
+  if (data.startsWith("contact")) {
+    const [, userId] = data.split(":");
+    const link = `tg://openmessage?user_id=${userId}`;
 
-    try {
-      await bot.sendMessage(userId, `Здравствуйте! Ваша заявка №${orderId} принята в работу. Сейчас уточняем детали и скоро свяжемся с вами.`);
-      await bot.answerCallbackQuery(q.id, { text: "Ответ отправлен" });
-    } catch (e) {
-      await bot.answerCallbackQuery(q.id, { text: "Клиент не писал боту", show_alert: true });
-    }
+    await bot.sendMessage(q.from.id, `Открыть чат:\n${link}`);
   }
 
-  if (data.startsWith("take")) {
+  if (data === "take") {
     await bot.editMessageText(
-      q.message.text + "\n\n🟢 Статус: В работе",
+      q.message.text + "\n\n🟢 В работе",
       {
         chat_id: q.message.chat.id,
-        message_id: q.message.message_id,
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "✅ Завершена", callback_data: `done` }]
-          ]
-        }
+        message_id: q.message.message_id
       }
     );
   }
 
-  if (data.startsWith("done")) {
-    await bot.editMessageText(
-      q.message.text + "\n\n✅ Статус: Завершена",
-      {
-        chat_id: q.message.chat.id,
-        message_id: q.message.message_id,
-        reply_markup: { inline_keyboard: [] }
-      }
-    );
-  }
-
-  if (data.startsWith("close")) {
+  if (data === "close") {
     await bot.deleteMessage(q.message.chat.id, q.message.message_id);
   }
 
   await bot.answerCallbackQuery(q.id);
 });
 
-// ===== TELEGRAM =====
+// Telegram webhook
 app.post(WEBHOOK_PATH, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
 });
 
-// ===== START =====
+// Старт
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "Открыть форму:", {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🚀 Открыть форму", web_app: { url: WEBAPP_URL } }]
+        [{ text: "🚀 Открыть", web_app: { url: WEBAPP_URL } }]
       ]
     }
   });
 });
 
-// ===== START SERVER =====
+// Запуск
 app.listen(PORT, async () => {
   console.log("Server running");
-
-  try {
-    await bot.setWebHook(WEBHOOK_URL);
-  } catch (e) {
-    console.log(e);
-  }
+  await bot.setWebHook(WEBHOOK_URL);
 });
