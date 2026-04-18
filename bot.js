@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3000;
 const WEBHOOK_PATH = `/telegram/${BOT_TOKEN}`;
 const WEBHOOK_URL = `${PUBLIC_URL}${WEBHOOK_PATH}`;
 
+// 🔢 глобальный счётчик
 let orderCounter = 1;
 
 // ===== SERVER =====
@@ -25,20 +26,33 @@ app.get("/", (req, res) => {
   res.send("Bot is running");
 });
 
+// ===== ФОРМАТИРОВАНИЕ =====
+function cleanText(text, remove) {
+  if (!text) return "-";
+  return text.replace(remove, "").trim();
+}
+
 // ===== ЗАЯВКА =====
 app.post("/order", async (req, res) => {
   const { order, user } = req.body;
   if (!order) return res.sendStatus(400);
 
+  // 👤 пользователь (фикс)
   const userLabel = user?.username
     ? `@${user.username}`
-    : (user?.first_name || `ID:${user?.id}`);
+    : `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || `ID:${user?.id}`;
 
   const userLink = user?.username
     ? `https://t.me/${user.username}`
     : `tg://user?id=${user?.id}`;
 
+  // 🔢 номер заявки
   const orderId = orderCounter++;
+
+  // 💸 чистка текста
+  const receiveAmount = cleanText(order.resultText, "К получению:");
+  const giveAmount = cleanText(order.subResultText, "Вы отдаёте:");
+  const fee = cleanText(order.feeText, "Комиссия:");
 
   const text = `
 📨 Заявка №${orderId}
@@ -49,9 +63,9 @@ app.post("/order", async (req, res) => {
 💱 ${order.from} → ${order.to}
 
 💸 Отдаёт: ${order.amount} ${order.from}
-💰 Получает: ${order.resultText || "-"}
+💰 Получает: ${receiveAmount}
 
-💼 Комиссия: ${order.feeText || "-"}
+💼 Комиссия: ${fee}
 
 📦 Отправка:
 ${order.sendRubMethod || "-"} ${order.sendCity || ""}
