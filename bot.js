@@ -5,12 +5,12 @@ const fs = require("fs");
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL;
-const WEBAPP_URL = process.env.WEBAPP_URL;
+const FORM_URL = process.env.FORM_URL;
 const WORK_CHAT_ID = Number(process.env.WORK_CHAT_ID);
 
 if (!BOT_TOKEN) throw new Error("BOT_TOKEN is missing");
 if (!PUBLIC_URL) throw new Error("PUBLIC_URL is missing");
-if (!WEBAPP_URL) throw new Error("WEBAPP_URL is missing");
+if (!FORM_URL) throw new Error("FORM_URL is missing");
 if (!Number.isFinite(WORK_CHAT_ID)) throw new Error("WORK_CHAT_ID is missing or invalid");
 
 const bot = new TelegramBot(BOT_TOKEN);
@@ -33,61 +33,23 @@ function saveCounter() {
   fs.writeFileSync("counter.json", JSON.stringify({ counter: orderCounter }));
 }
 
-function parseInitData(initData) {
-  try {
-    const params = new URLSearchParams(initData);
-    const userRaw = params.get("user");
-    if (!userRaw) return null;
-    try {
-      return JSON.parse(userRaw);
-    } catch {
-      return JSON.parse(decodeURIComponent(userRaw));
-    }
-  } catch {
-    return null;
-  }
-}
-
 function clean(text, prefix) {
   if (!text) return "-";
   return text.replace(prefix, "").trim();
 }
 
-app.get("/", (req, res) => {
-  res.status(200).send("Bot is running");
-});
-
-app.post("/order", async (req, res) => {
-  try {
-    const { order, initData, user } = req.body || {};
-    const tgUser = parseInitData(initData) || user || null;
-
-    if (!order) {
-      return res.status(400).json({ ok: false, error: "order missing" });
-    }
-
-    const orderId = orderCounter++;
-    saveCounter();
-
-    const userId = tgUser?.id || null;
-    const userLabel = tgUser?.username
-      ? `@${tgUser.username}`
-      : `${tgUser?.first_name || ""} ${tgUser?.last_name || ""}`.trim() || (userId ? `ID:${userId}` : "Клиент");
-
-    const receive = clean(order.resultText, "К получению:");
-    const fee = clean(order.feeText, "Комиссия:");
-
-    const text = `
+function buildOrderText(order, orderId) {
+  return `
 📨 Заявка №${orderId}
 
-👤 Клиент: ${userLabel}
+👤 Клиент: ${order.clientContact || "не указан"}
 
 💱 ${order.from} → ${order.to}
 
 💸 Отдаёт: ${order.amount} ${order.from}
-💰 Получает: ${receive}
+💰 Получает: ${clean(order.resultText, "К получению:")}
 
-💼 Комиссия: ${fee}
+💼 Комиссия: ${clean(order.feeText, "Комиссия:")}
 
 📦 Отправка:
 ${order.sendRubMethod || "-"} ${order.sendCity || ""}
@@ -96,10 +58,38 @@ ${order.sendRubMethod || "-"} ${order.sendCity || ""}
 ${order.receiveMethod || "-"} ${order.receiveCity || ""}
 ${order.receiveDetails || ""}
 ${order.network || ""}
-`;
+`.trim();
+}
+
+app.get("/", (req, res) => {
+  res.status(200).send("Bot is running");
+});
+
+app.post("/order", async (req, res) => {
+  try {
+    const { order } = req.body || {};
+
+    if (!order) {
+      return res.status(400).json({ ok: false, error: "order missing" });
+    }
+
+    const orderId = orderCounter++;
+    saveCounter();
+
+    const text = buildOrderText(order, orderId);
+
+    const clientContact = String(order.clientContact || "").trim();
+    const contactLink =
+      clientContact.startsWith("@")
+        ? `https://t.me/${clientContact.slice(1)}`
+        : clientContact.startsWith("https://t.me/")
+          ? clientContact
+          : clientContact.startsWith("t.me/")
+            ? `https://${clientContact}`
+            : null;
 
     const keyboard = [
-      ...(userId ? [[{ text: "💬 Открыть чат", callback_data: `contact:${userId}` }]] : []),
+      ...(contactLink ? [[{ text: "💬 Открыть контакт", url: contactLink }]] : []),
       [
         { text: "🟢 В работу", callback_data: `take:${orderId}` },
         { text: "❌ Закрыта", callback_data: `close:${orderId}` }
@@ -107,9 +97,7 @@ ${order.network || ""}
     ];
 
     await bot.sendMessage(WORK_CHAT_ID, text, {
-      reply_markup: {
-        inline_keyboard: keyboard
-      }
+      reply_markup: { inline_keyboard: keyboard }
     });
 
     return res.json({ ok: true });
@@ -124,16 +112,6 @@ ${order.network || ""}
 
 bot.on("callback_query", async (q) => {
   const data = String(q.data || "");
-
-  if (data.startsWith("contact:")) {
-    const userId = data.split(":")[1];
-    if (!userId || userId === "null") {
-      await bot.answerCallbackQuery(q.id, { text: "Нет данных пользователя", show_alert: true });
-      return;
-    }
-    const link = `tg://openmessage?user_id=${userId}`;
-    await bot.sendMessage(q.from.id, `Открыть чат:\n${link}`);
-  }
 
   if (data.startsWith("take:")) {
     await bot.editMessageText(q.message.text + "\n\n🟢 Статус: В работе", {
@@ -169,7 +147,7 @@ bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id, "Открыть форму:", {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🚀 Открыть форму", web_app: { url: WEBAPP_URL } }]
+        [{ text: "🚀 Открыть форму", url: FORM_URL }]
       ]
     }
   });
