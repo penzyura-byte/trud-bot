@@ -1,7 +1,7 @@
 {
   "name": "trud-bot",
   "version": "1.0.0",
-  "description": "Trud Exchange application bot",
+  "description": "Trud Exchange form bot",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
